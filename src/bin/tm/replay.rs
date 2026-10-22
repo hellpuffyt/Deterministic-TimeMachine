@@ -5,8 +5,8 @@ use std::process::ExitCode;
 use std::time::Duration;
 
 use anyhow::{Context, Result};
+use timemachine::RunReport;
 use timemachine::envmode::{TM_MODE, TM_REPORT, TM_TEST, TM_TRACE};
-use timemachine::{RunReport, Trace};
 
 use crate::child::{Child, Scratch, display};
 
@@ -21,7 +21,7 @@ pub struct Options {
 
 pub fn run(o: Options) -> Result<ExitCode> {
     let recorded =
-        Trace::load(&o.trace).with_context(|| format!("cannot use {}", o.trace.display()))?;
+        crate::load_trace(&o.trace).with_context(|| format!("cannot use {}", o.trace.display()))?;
     let trace_abs = std::fs::canonicalize(&o.trace)
         .with_context(|| format!("cannot resolve {}", o.trace.display()))?;
     let expected = format!(

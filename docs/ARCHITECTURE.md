@@ -72,7 +72,7 @@ One JSON object per line:
 
 The checksum is FNV-1a 64 over the exact bytes of the event lines (each followed by `\n`). It detects accidental corruption and hand edits; it is **not** a security mechanism. `Value` is externally tagged (`{"u64":5}`, `"unit"`, `{"bytes":{"utf8":"…"}}` or `{"bytes":{"hex":"…"}}`, `{"err":{"kind":"NotFound","message":"…"}}`, …). Any incompatible change bumps `trace::VERSION`; readers reject other versions with a message telling the user to re-record.
 
-Traces are written to `<path>.tmtrace.partial` and renamed, so a reader never sees a half-written file.
+Traces are streamed to `<path>.tmtrace.partial`, flushed to disk (`fsync`) and renamed, so a reader never sees a half-written file. Reading streams the file line by line through a reader bounded by a size limit (`trace::DEFAULT_MAX_TRACE_BYTES`, 1 GiB), so neither a huge file nor an endless input is read whole. The checksum covers event lines only; see [DETERMINISM.md](DETERMINISM.md#trace-integrity).
 
 ## The CLI protocol
 

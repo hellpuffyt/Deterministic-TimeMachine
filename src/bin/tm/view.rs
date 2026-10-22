@@ -8,9 +8,7 @@ use anyhow::{Context, Result};
 use timemachine::Trace;
 
 pub fn inspect(path: &Path, limit: usize, kind: Option<&str>, no_verify: bool) -> Result<ExitCode> {
-    let text =
-        std::fs::read_to_string(path).with_context(|| format!("cannot read {}", path.display()))?;
-    let trace = Trace::parse_with(&text, !no_verify)
+    let trace = crate::load_trace_with(path, !no_verify)
         .with_context(|| format!("{} is not a valid trace", path.display()))?;
     let h = &trace.header;
     println!("trace    {}", path.display());
@@ -60,8 +58,10 @@ pub fn inspect(path: &Path, limit: usize, kind: Option<&str>, no_verify: bool) -
 }
 
 pub fn diff(a: &Path, b: &Path, context: usize) -> Result<ExitCode> {
-    let ta = Trace::load(a).with_context(|| format!("{} is not a valid trace", a.display()))?;
-    let tb = Trace::load(b).with_context(|| format!("{} is not a valid trace", b.display()))?;
+    let ta =
+        crate::load_trace(a).with_context(|| format!("{} is not a valid trace", a.display()))?;
+    let tb =
+        crate::load_trace(b).with_context(|| format!("{} is not a valid trace", b.display()))?;
     let Some(i) = ta.first_difference(&tb) else {
         println!(
             "identical event streams ({} events; call sites are not compared)",
@@ -89,7 +89,7 @@ pub fn diff(a: &Path, b: &Path, context: usize) -> Result<ExitCode> {
 pub fn validate(paths: &[PathBuf]) -> Result<ExitCode> {
     let mut bad = 0;
     for p in paths {
-        match Trace::load(p) {
+        match crate::load_trace(p) {
             Ok(t) => println!(
                 "ok       {} ({} events, {})",
                 p.display(),

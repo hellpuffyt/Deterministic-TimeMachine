@@ -1,8 +1,9 @@
 //! Serializing and validating trace files.
 
+use std::io::{BufRead, BufReader, BufWriter, Read, Write};
 use std::path::Path;
 
-use super::{FORMAT, Footer, Line, Trace, TraceError, VERSION, Value};
+use super::{DEFAULT_MAX_TRACE_BYTES, FORMAT, Footer, Line, Trace, TraceError, VERSION, Value};
 
 /// FNV-1a 64-bit hash, used for trace checksums and content keys.
 pub fn fnv1a64(bytes: &[u8]) -> u64 {
@@ -61,19 +62,118 @@ impl Trace {
         out
     }
 
-    /// Writes the trace to `path` (via a temporary file and rename, so readers
-    /// never observe a half-written trace).
+    /// Writes the trace to `path` (streamed through a temporary file that is
+    /// flushed to disk and then renamed, so readers never observe a
+    /// half-written trace and no second in-memory copy of the text is built).
     pub fn save(&self, path: impl AsRef<Path>) -> Result<(), TraceError> {
         let path = path.as_ref();
         let tmp = path.with_extension("tmtrace.partial");
-        std::fs::write(&tmp, self.to_text())?;
+        let result = self.write_to(&tmp);
+        if let Err(e) = result {
+            // Best effort: do not leave a partial file behind.
+            let _ = std::fs::remove_file(&tmp);
+            return Err(e);
+        }
         std::fs::rename(&tmp, path)?;
         Ok(())
     }
 
-    /// Reads and fully validates a trace file.
+    fn write_to(&self, tmp: &Path) -> Result<(), TraceError> {
+        let file = std::fs::File::create(tmp)?;
+        let mut out = BufWriter::new(file);
+        out.write_all(to_line(&Line::Header(self.header.clone())).as_bytes())?;
+        out.write_all(b"\n")?;
+        let mut sum = Checksum::new();
+        for event in &self.events {
+            let line = to_line(&Line::Event(event.clone()));
+            sum.update(&line);
+            out.write_all(line.as_bytes())?;
+            out.write_all(b"\n")?;
+        }
+        let footer = Footer {
+            events: self.events.len() as u64,
+            outcome: self.outcome,
+            message: self.message.clone(),
+            checksum: sum.hex(),
+        };
+        out.write_all(to_line(&Line::End(footer)).as_bytes())?;
+        out.write_all(b"\n")?;
+        let file = out.into_inner().map_err(|e| e.into_error())?;
+        file.sync_all()?;
+        Ok(())
+    }
+
+    /// Reads and fully validates a trace file, refusing files larger than
+    /// [`DEFAULT_MAX_TRACE_BYTES`].
     pub fn load(path: impl AsRef<Path>) -> Result<Trace, TraceError> {
-        Trace::parse(&std::fs::read_to_string(path)?)
+        Trace::load_with(path, DEFAULT_MAX_TRACE_BYTES, true)
+    }
+
+    /// Reads and fully validates a trace file of at most `max_bytes` bytes.
+    pub fn load_with_limit(path: impl AsRef<Path>, max_bytes: u64) -> Result<Trace, TraceError> {
+        Trace::load_with(path, max_bytes, true)
+    }
+
+    /// Reads a trace file of at most `max_bytes` bytes, optionally skipping
+    /// checksum verification.
+    ///
+    /// The file is read line by line: memory use is the parsed events plus
+    /// one line, never the whole file text. Reading stops with
+    /// [`TraceError::TooLarge`] as soon as more than `max_bytes` bytes have
+    /// been seen, so a huge or endless input (`/dev/zero`, a FIFO) cannot
+    /// exhaust memory.
+    pub fn load_with(
+        path: impl AsRef<Path>,
+        max_bytes: u64,
+        verify_checksum: bool,
+    ) -> Result<Trace, TraceError> {
+        let file = std::fs::File::open(path)?;
+        let meta = file.metadata()?;
+        if meta.is_file() && meta.len() > max_bytes {
+            return Err(TraceError::TooLarge {
+                limit: max_bytes,
+                size: Some(meta.len()),
+            });
+        }
+        let mut reader = BufReader::new(file.take(max_bytes.saturating_add(1)));
+        let mut consumed: u64 = 0;
+        let mut idx = 0usize;
+        let mut buf = Vec::new();
+        let mut too_large = false;
+        let lines = std::iter::from_fn(|| {
+            if too_large {
+                return None;
+            }
+            buf.clear();
+            match reader.read_until(b'\n', &mut buf) {
+                Ok(0) => None,
+                Ok(n) => {
+                    consumed = consumed.saturating_add(n as u64);
+                    let lineno = idx;
+                    idx += 1;
+                    if consumed > max_bytes {
+                        too_large = true;
+                        return Some(Err(TraceError::TooLarge {
+                            limit: max_bytes,
+                            size: None,
+                        }));
+                    }
+                    let mut bytes = buf.as_slice();
+                    if let Some(b) = bytes.strip_suffix(b"\n") {
+                        bytes = b.strip_suffix(b"\r").unwrap_or(b);
+                    }
+                    Some(match std::str::from_utf8(bytes) {
+                        Ok(s) => Ok((lineno, s.to_owned())),
+                        Err(e) => Err(TraceError::Malformed {
+                            line: lineno + 1,
+                            message: format!("not valid UTF-8 ({e})"),
+                        }),
+                    })
+                }
+                Err(e) => Some(Err(TraceError::Io(e))),
+            }
+        });
+        parse_lines(lines, verify_checksum)
     }
 
     /// Parses and fully validates trace text (including the checksum).
@@ -84,105 +184,7 @@ impl Trace {
     /// Parses trace text, optionally skipping checksum verification (for
     /// traces that were edited by hand on purpose).
     pub fn parse_with(text: &str, verify_checksum: bool) -> Result<Trace, TraceError> {
-        let mut lines = text
-            .lines()
-            .enumerate()
-            .filter(|(_, l)| !l.trim().is_empty());
-        let (_, first) = lines.next().ok_or(TraceError::Empty)?;
-        let header = match serde_json::from_str::<Line>(first) {
-            Ok(Line::Header(h)) => h,
-            Ok(_) => return Err(TraceError::MissingHeader),
-            Err(e) => {
-                // Distinguish "not ours" from "ours but newer/older".
-                if let Ok(raw) = serde_json::from_str::<serde_json::Value>(first) {
-                    if let Some(h) = raw.get("header") {
-                        let format = h.get("format").and_then(|f| f.as_str()).unwrap_or_default();
-                        if format != FORMAT {
-                            return Err(TraceError::WrongFormat {
-                                found: format.into(),
-                            });
-                        }
-                        if let Some(v) = h.get("version").and_then(|v| v.as_u64()) {
-                            if v != u64::from(VERSION) {
-                                return Err(TraceError::UnsupportedVersion {
-                                    found: u32::try_from(v).unwrap_or(u32::MAX),
-                                    supported: VERSION,
-                                });
-                            }
-                        }
-                    }
-                    return Err(TraceError::MissingHeader);
-                }
-                return Err(TraceError::Malformed {
-                    line: 1,
-                    message: e.to_string(),
-                });
-            }
-        };
-        if header.format != FORMAT {
-            return Err(TraceError::WrongFormat {
-                found: header.format,
-            });
-        }
-        if header.version != VERSION {
-            return Err(TraceError::UnsupportedVersion {
-                found: header.version,
-                supported: VERSION,
-            });
-        }
-
-        let mut events = Vec::new();
-        let mut sum = Checksum::new();
-        let mut footer = None;
-        for (idx, line) in lines {
-            let lineno = idx + 1;
-            if footer.is_some() {
-                return Err(TraceError::TrailingData { line: lineno });
-            }
-            match serde_json::from_str::<Line>(line) {
-                Ok(Line::Event(event)) => {
-                    let expected = events.len() as u64;
-                    if event.seq != expected {
-                        return Err(TraceError::BadSequence {
-                            line: lineno,
-                            expected,
-                            found: event.seq,
-                        });
-                    }
-                    sum.update(line);
-                    events.push(event);
-                }
-                Ok(Line::End(f)) => footer = Some(f),
-                Ok(Line::Header(_)) => return Err(TraceError::DuplicateHeader { line: lineno }),
-                Err(e) => {
-                    return Err(TraceError::Malformed {
-                        line: lineno,
-                        message: e.to_string(),
-                    });
-                }
-            }
-        }
-        let footer = footer.ok_or(TraceError::Truncated {
-            events: events.len() as u64,
-        })?;
-        if footer.events != events.len() as u64 {
-            return Err(TraceError::CountMismatch {
-                declared: footer.events,
-                actual: events.len() as u64,
-            });
-        }
-        if verify_checksum && footer.checksum != sum.hex() {
-            return Err(TraceError::ChecksumMismatch {
-                declared: footer.checksum,
-                computed: sum.hex(),
-            });
-        }
-        Ok(Trace {
-            header,
-            events,
-            outcome: footer.outcome,
-            message: footer.message,
-        })
+        parse_lines(text.lines().enumerate().map(Ok), verify_checksum)
     }
 
     /// The decision values (random draws and choices) in order. This is the
@@ -211,6 +213,116 @@ impl Trace {
         }
         (self.events.len() != other.events.len()).then_some(n)
     }
+}
+
+/// The shared reader: validates header, events and footer from an iterator
+/// of `(0-based line index, line)` pairs without holding the whole text.
+fn parse_lines<S: AsRef<str>>(
+    lines: impl Iterator<Item = Result<(usize, S), TraceError>>,
+    verify_checksum: bool,
+) -> Result<Trace, TraceError> {
+    let mut lines = lines.filter(|item| match item {
+        Ok((_, l)) => !l.as_ref().trim().is_empty(),
+        Err(_) => true,
+    });
+    let (_, first) = lines.next().ok_or(TraceError::Empty)??;
+    let first = first.as_ref();
+    let header = match serde_json::from_str::<Line>(first) {
+        Ok(Line::Header(h)) => h,
+        Ok(_) => return Err(TraceError::MissingHeader),
+        Err(e) => {
+            // Distinguish "not ours" from "ours but newer/older".
+            if let Ok(raw) = serde_json::from_str::<serde_json::Value>(first) {
+                if let Some(h) = raw.get("header") {
+                    let format = h.get("format").and_then(|f| f.as_str()).unwrap_or_default();
+                    if format != FORMAT {
+                        return Err(TraceError::WrongFormat {
+                            found: format.into(),
+                        });
+                    }
+                    if let Some(v) = h.get("version").and_then(|v| v.as_u64()) {
+                        if v != u64::from(VERSION) {
+                            return Err(TraceError::UnsupportedVersion {
+                                found: u32::try_from(v).unwrap_or(u32::MAX),
+                                supported: VERSION,
+                            });
+                        }
+                    }
+                }
+                return Err(TraceError::MissingHeader);
+            }
+            return Err(TraceError::Malformed {
+                line: 1,
+                message: e.to_string(),
+            });
+        }
+    };
+    if header.format != FORMAT {
+        return Err(TraceError::WrongFormat {
+            found: header.format,
+        });
+    }
+    if header.version != VERSION {
+        return Err(TraceError::UnsupportedVersion {
+            found: header.version,
+            supported: VERSION,
+        });
+    }
+
+    let mut events = Vec::new();
+    let mut sum = Checksum::new();
+    let mut footer = None;
+    for item in lines {
+        let (idx, line) = item?;
+        let line = line.as_ref();
+        let lineno = idx + 1;
+        if footer.is_some() {
+            return Err(TraceError::TrailingData { line: lineno });
+        }
+        match serde_json::from_str::<Line>(line) {
+            Ok(Line::Event(event)) => {
+                let expected = events.len() as u64;
+                if event.seq != expected {
+                    return Err(TraceError::BadSequence {
+                        line: lineno,
+                        expected,
+                        found: event.seq,
+                    });
+                }
+                sum.update(line);
+                events.push(event);
+            }
+            Ok(Line::End(f)) => footer = Some(f),
+            Ok(Line::Header(_)) => return Err(TraceError::DuplicateHeader { line: lineno }),
+            Err(e) => {
+                return Err(TraceError::Malformed {
+                    line: lineno,
+                    message: e.to_string(),
+                });
+            }
+        }
+    }
+    let footer = footer.ok_or(TraceError::Truncated {
+        events: events.len() as u64,
+    })?;
+    if footer.events != events.len() as u64 {
+        return Err(TraceError::CountMismatch {
+            declared: footer.events,
+            actual: events.len() as u64,
+        });
+    }
+    if verify_checksum && footer.checksum != sum.hex() {
+        return Err(TraceError::ChecksumMismatch {
+            declared: footer.checksum,
+            computed: sum.hex(),
+        });
+    }
+    Ok(Trace {
+        header,
+        events,
+        outcome: footer.outcome,
+        message: footer.message,
+    })
 }
 
 #[cfg(test)]

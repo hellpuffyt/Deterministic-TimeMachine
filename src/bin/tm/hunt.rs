@@ -66,7 +66,7 @@ pub fn run(o: Options) -> Result<ExitCode> {
             );
             continue;
         }
-        let trace = match Trace::load(&trace_path) {
+        let trace = match crate::load_trace(&trace_path) {
             Ok(t) => t,
             Err(e) => {
                 inconclusive += 1;

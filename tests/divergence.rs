@@ -209,3 +209,62 @@ fn a_different_failure_is_not_reported_as_reproduced() {
     assert!(r.divergence.is_none());
     assert!(!r.reproduced);
 }
+
+/// A program with three checkpoints; at each it notes its state (a digest of
+/// every input read so far) and the replay position.
+fn checkpoints(ctx: &Ctx, order: [&str; 3], states: &mut Vec<(String, u64, usize)>) {
+    let mut digest = 0u64;
+    for label in order {
+        digest = digest.rotate_left(7) ^ ctx.next_u64();
+        digest ^= ctx.now_nanos();
+        ctx.sleep(Duration::from_millis(digest % 50));
+        ctx.mark(label);
+        states.push((label.to_owned(), digest, ctx.position()));
+    }
+}
+
+#[test]
+fn checkpoints_restore_the_recorded_state_in_order() {
+    let mut recorded = Vec::new();
+    let t = record(|ctx| {
+        checkpoints(ctx, ["a", "b", "c"], &mut recorded);
+        Ok(())
+    });
+    let mut replayed = Vec::new();
+    let r = replay(&t, |ctx| {
+        checkpoints(ctx, ["a", "b", "c"], &mut replayed);
+        Ok(())
+    });
+    assert!(r.reproduced, "{:?}", r.divergence);
+    assert_eq!(replayed, recorded, "same state at every checkpoint");
+    // Each checkpoint sits at the recorded event index.
+    for (label, _, pos) in &recorded {
+        let ev = &t.events[pos - 1];
+        assert_eq!(ev.key.as_deref(), Some(label.as_str()));
+    }
+}
+
+#[test]
+fn reordered_checkpoints_diverge_at_the_first_out_of_order_mark() {
+    let mut recorded = Vec::new();
+    let t = record(|ctx| {
+        checkpoints(ctx, ["a", "b", "c"], &mut recorded);
+        Ok(())
+    });
+    let mut replayed = Vec::new();
+    let r = replay(&t, |ctx| {
+        checkpoints(ctx, ["a", "c", "b"], &mut replayed);
+        Ok(())
+    });
+    let d = r.divergence.expect("divergence");
+    assert_eq!(d.reason, DivergenceReason::DifferentRequest);
+    let second_mark = recorded[1].2 as u64 - 1;
+    assert_eq!(d.index, second_mark);
+    assert_eq!(d.expected.unwrap().key.as_deref(), Some("b"));
+    assert_eq!(d.actual.unwrap().key.as_deref(), Some("c"));
+    assert_eq!(
+        replayed.len(),
+        1,
+        "state after the divergence is never observed"
+    );
+}

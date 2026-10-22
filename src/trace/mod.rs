@@ -29,6 +29,13 @@ pub const FORMAT: &str = "timemachine-trace";
 /// Trace format version written by this build. Readers reject other versions.
 pub const VERSION: u32 = 1;
 
+/// Largest trace file [`Trace::load`] accepts: 1 GiB (about 9 million
+/// events of the kind `examples/trace_scale.rs` records). Larger files are
+/// refused with [`TraceError::TooLarge`] before they are read; use
+/// [`Trace::load_with_limit`] (or `TM_MAX_TRACE_BYTES` for environment-driven
+/// runs and the `tm` CLI) to accept more.
+pub const DEFAULT_MAX_TRACE_BYTES: u64 = 1 << 30;
+
 /// Kinds of recorded nondeterministic inputs.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
 pub enum Kind {

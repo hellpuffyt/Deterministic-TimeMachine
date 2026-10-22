@@ -10,9 +10,9 @@ Concrete, self-contained tasks. Each lists where to look and how to know you're 
    *Where:* `src/bin/tm/view.rs`.
    *Done when:* the output is one JSON document with header, outcome, per-kind counts and events, and a test parses it.
 
-3. **Optional size cap for `Trace::load`.**
-   *Where:* `src/trace/codec.rs` (add `load_with_limit`), `src/trace/error.rs` (new error variant with an actionable message).
-   *Done when:* a test shows an oversized file is rejected without reading it fully.
+3. **`tm inspect` for traces over the size limit without loading them** — stream the events and print the first `--limit` of them.
+   *Where:* `src/bin/tm/view.rs`, reusing the line reader in `src/trace/codec.rs`.
+   *Done when:* a test inspects a trace larger than a small `TM_MAX_TRACE_BYTES` and shows its first events.
 
 4. **`Ctx::gen_range_i64` and `gen_range` for `usize`.**
    *Where:* `src/ctx/inputs.rs`. Build on `next_u64`; do not add new event kinds.

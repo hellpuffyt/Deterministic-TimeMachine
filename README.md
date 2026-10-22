@@ -106,7 +106,7 @@ or, inside an ordinary `#[test]`, `Builder::new("my_test").from_env()?` (the tra
 **Implemented**
 - `Ctx` with record, replay, live and drive modes; clones share one recording.
 - Sources: virtual and system clocks, seeded xoshiro256\*\* and entropy RNGs, in-memory and confined real filesystems, map and process environments, closure-backed or disabled network. Each is a small trait you can implement.
-- Trace format v1: one JSON object per line, header + events + footer with event count and FNV-1a checksum; truncation, reordering, edits, wrong format and wrong version are each rejected with a specific, actionable error.
+- Trace format v1: one JSON object per line, header + events + footer with event count and FNV-1a checksum over the event lines; truncation, reordering, edited event lines, wrong format, wrong version and oversized files are each rejected with a specific, actionable error. Loading streams the file and is capped at 1 GiB by default (`TM_MAX_TRACE_BYTES` / `Trace::load_with_limit` to raise it).
 - Divergence diagnostics: event index, expected vs actual request, call sites, three preceding events, reason (`different_request`, `different_site`, `past_end`, `ended_early`, `bad_value`), and a hint. Call-site checking: exact, file-only (default), or off.
 - `harness::explore` / `harness::replay` / `minimize::minimize` in-process; ddmin plus a value-shrinking pass over decisions.
 - `sched`: a cooperative, deterministic scheduler whose interleavings are recorded choices.
@@ -137,7 +137,7 @@ flowchart LR
     CLI["tm hunt / replay / minimize"] -->|"TM_* env vars"| P
 ```
 
-Details, including the trace format and why the RNG is implemented in-crate, are in [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
+Details, including the trace format and why the RNG is implemented in-crate, are in [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md). The exact replay guarantee — what is controlled, what is not, which tests check each claim, and measured memory use for 1M and 10M-event traces — is in [docs/DETERMINISM.md](docs/DETERMINISM.md).
 
 ## More examples
 
@@ -204,6 +204,7 @@ Environment variables (set by `tm`, readable by any program using `from_env`/`ru
 | `TM_TRACE` | trace to write (record, drive) or read (replay) |
 | `TM_DECISIONS` | JSON array of decisions (drive) |
 | `TM_REPORT` | where to write a JSON run report |
+| `TM_MAX_TRACE_BYTES` | largest trace file to load (default 1 GiB); not set by `tm`, honoured by `tm` and by the program |
 
 `run_main` exit codes: 0 passed, 1 failed/panicked, 2 invalid `TM_*` configuration, 3 replay diverged. `tm` exit codes: 0 success, 1 negative result (no failure found / not reproduced / traces differ / invalid trace), 2 usage or environment error, 3 divergence.
 
@@ -217,13 +218,13 @@ cargo +1.85 test --all-features      # MSRV check
 
 The CLI tests run the real `tm` binary against the example programs. One test is `#[ignore]`d on purpose: it regenerates `tests/fixtures/token_cache.tmtrace` and is run explicitly when that fixture must change.
 
-There are no benchmarks; the timings above are wall-clock observations from single runs on a loaded machine, not performance claims.
+There are no benchmarks; the timings above are wall-clock observations from single runs on a loaded machine, not performance claims. Memory for large traces was measured once with `examples/trace_scale.rs` (numbers and method in [docs/DETERMINISM.md](docs/DETERMINISM.md#memory-and-size)).
 
 ## Security model
 
 - `tm hunt|replay|minimize` execute the command you give them, with the same rights as you — like a shell.
 - A trace is **input to your program**: replaying it feeds the recorded values to the code under test. Treat trace files like test fixtures from a contributor — review them before replaying.
-- Trace parsing does not execute anything, rejects malformed input with errors (a property test feeds it 256 randomly corrupted traces per run and checks it never panics or misreads one), but loads the whole file into memory (no size cap).
+- Trace parsing does not execute anything, rejects malformed input with errors (a property test feeds it 256 randomly corrupted traces per run and checks it never panics or misreads one), and reads at most 1 GiB by default (configurable), so a huge or endless input cannot exhaust memory. Parsed traces are held in memory: about 150 bytes per event.
 - `RealFs` refuses absolute paths and `..` components, but follows symlinks that already exist inside its root.
 - The default network source refuses every request, so a test cannot reach a real host by accident.
 - Recorded traces contain whatever your program read: file contents, environment variables, response bodies. **Do not commit traces recorded with real sources without checking them for secrets.**

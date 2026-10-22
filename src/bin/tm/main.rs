@@ -143,6 +143,21 @@ enum Command {
     },
 }
 
+/// Loads and verifies a trace, honouring `TM_MAX_TRACE_BYTES`.
+pub fn load_trace(path: impl AsRef<std::path::Path>) -> anyhow::Result<timemachine::Trace> {
+    load_trace_with(path, true)
+}
+
+/// Loads a trace, optionally without checksum verification, honouring
+/// `TM_MAX_TRACE_BYTES`.
+pub fn load_trace_with(
+    path: impl AsRef<std::path::Path>,
+    verify_checksum: bool,
+) -> anyhow::Result<timemachine::Trace> {
+    let limit = timemachine::envmode::max_trace_bytes()?;
+    Ok(timemachine::Trace::load_with(path, limit, verify_checksum)?)
+}
+
 fn main() -> ExitCode {
     let cli = Cli::parse();
     let result = match cli.command {

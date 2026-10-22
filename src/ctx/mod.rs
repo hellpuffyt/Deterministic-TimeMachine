@@ -102,6 +102,15 @@ impl Ctx {
         }
     }
 
+    /// In replay mode, the outcome and message the trace recorded (read from
+    /// the trace this context replays, so it cannot disagree with it).
+    pub(crate) fn recorded_outcome(&self) -> Option<(OutcomeKind, Option<String>)> {
+        match &self.lock().engine {
+            Engine::Replay { trace, .. } => Some((trace.outcome, trace.message.clone())),
+            _ => None,
+        }
+    }
+
     /// Ends the run.
     ///
     /// * record / drive: returns the trace (with the given outcome);

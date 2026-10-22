@@ -56,7 +56,7 @@ impl Runner<'_> {
         if exit.success() {
             return Ok(None);
         }
-        let Ok(trace) = Trace::load(self.scratch.path("candidate.tmtrace")) else {
+        let Ok(trace) = crate::load_trace(self.scratch.path("candidate.tmtrace")) else {
             return Ok(None);
         };
         let same = self
@@ -69,7 +69,7 @@ impl Runner<'_> {
 
 pub fn run(o: Options) -> Result<ExitCode> {
     let original =
-        Trace::load(&o.trace).with_context(|| format!("cannot use {}", o.trace.display()))?;
+        crate::load_trace(&o.trace).with_context(|| format!("cannot use {}", o.trace.display()))?;
     if !original.outcome.is_failure() {
         bail!(
             "{} records a {} run; only failing traces can be minimized",

@@ -282,6 +282,62 @@ fn program_without_timemachine_is_explained() {
 }
 
 #[test]
+fn the_trace_size_limit_applies_to_tm_and_to_the_replayed_program() {
+    let dir = tempfile::tempdir().unwrap();
+    let trace = hunt_flaky_cache(dir.path());
+    let ex = example("flaky_cache");
+    let limit = [("TM_MAX_TRACE_BYTES", "100")];
+    let o = run(&["validate", trace.to_str().unwrap()], &limit, dir.path());
+    assert_eq!(o.status.code(), Some(1), "{}", text(&o));
+    assert!(
+        text(&o).contains("larger than the 100-byte limit"),
+        "{}",
+        text(&o)
+    );
+    let o = run(
+        &[
+            "replay",
+            trace.to_str().unwrap(),
+            "--",
+            ex.to_str().unwrap(),
+        ],
+        &limit,
+        dir.path(),
+    );
+    assert_ne!(o.status.code(), Some(0), "{}", text(&o));
+    assert!(
+        text(&o).contains("larger than the 100-byte limit"),
+        "{}",
+        text(&o)
+    );
+    // The program itself enforces the same variable when it loads TM_TRACE.
+    let o = Command::new(&ex)
+        .env("TM_MODE", "replay")
+        .env("TM_TRACE", &trace)
+        .env("TM_MAX_TRACE_BYTES", "100")
+        .output()
+        .unwrap();
+    assert_eq!(o.status.code(), Some(2), "{}", text(&o));
+    assert!(
+        text(&o).contains("larger than the 100-byte limit"),
+        "{}",
+        text(&o)
+    );
+    // A large enough limit replays normally.
+    let o = run(
+        &[
+            "replay",
+            trace.to_str().unwrap(),
+            "--",
+            ex.to_str().unwrap(),
+        ],
+        &[("TM_MAX_TRACE_BYTES", "1000000")],
+        dir.path(),
+    );
+    assert_eq!(o.status.code(), Some(0), "{}", text(&o));
+}
+
+#[test]
 fn invalid_tm_configuration_is_rejected_by_the_program() {
     let ex = example("lost_update");
     for (envs, needle) in [
@@ -294,6 +350,22 @@ fn invalid_tm_configuration_is_rejected_by_the_program() {
         (
             vec![("TM_MODE", "drive"), ("TM_DECISIONS", "/nonexistent.json")],
             "cannot load decisions",
+        ),
+        (
+            vec![
+                ("TM_MODE", "replay"),
+                ("TM_TRACE", "x"),
+                ("TM_MAX_TRACE_BYTES", "lots"),
+            ],
+            "invalid TM_MAX_TRACE_BYTES",
+        ),
+        (
+            vec![
+                ("TM_MODE", "replay"),
+                ("TM_TRACE", "x"),
+                ("TM_MAX_TRACE_BYTES", "0"),
+            ],
+            "invalid TM_MAX_TRACE_BYTES",
         ),
     ] {
         let mut c = Command::new(&ex);

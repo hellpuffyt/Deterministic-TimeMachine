@@ -10,6 +10,17 @@ pub enum TraceError {
     /// The file could not be read or written.
     #[error("cannot access trace file: {0}")]
     Io(#[from] io::Error),
+    /// The file exceeds the size limit it was loaded with.
+    #[error(
+        "trace is larger than the {limit}-byte limit{}; if the file is a trace you trust, raise the limit (Trace::load_with_limit, or TM_MAX_TRACE_BYTES for tm and environment-driven runs)",
+        size.map(|s| format!(" ({s} bytes)")).unwrap_or_default()
+    )]
+    TooLarge {
+        /// The limit in bytes.
+        limit: u64,
+        /// The file size, when it was known before reading.
+        size: Option<u64>,
+    },
     /// The file is empty.
     #[error(
         "trace is empty; expected a header line (was the recording interrupted before it started?)"

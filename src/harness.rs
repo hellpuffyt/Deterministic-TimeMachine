@@ -154,10 +154,23 @@ where
     F: FnOnce(&Ctx) -> Result<(), E>,
     E: Display,
 {
-    let ctx = setup(Builder::new(trace.header.test.clone())).replay(trace.clone());
+    replay_owned(trace.clone(), setup, test)
+}
+
+/// Replays `trace` against `test`, taking ownership of the trace so a large
+/// recording is not copied (peak memory is one trace, not two).
+pub fn replay_owned<S, F, E>(trace: Trace, setup: S, test: F) -> ReplayReport
+where
+    S: Fn(Builder) -> Builder,
+    F: FnOnce(&Ctx) -> Result<(), E>,
+    E: Display,
+{
+    let recorded_outcome = trace.outcome;
+    let recorded_message = trace.message.clone();
+    let ctx = setup(Builder::new(trace.header.test.clone())).replay(trace);
     let out = run(&ctx, test);
     let reproduced =
-        out.divergence.is_none() && out.kind == trace.outcome && out.message == trace.message;
+        out.divergence.is_none() && out.kind == recorded_outcome && out.message == recorded_message;
     ReplayReport {
         outcome: out.kind,
         message: out.message,

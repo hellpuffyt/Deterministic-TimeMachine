@@ -12,6 +12,7 @@
 //! | `TM_TRACE`     | trace to write (`record`, `drive`) or read (`replay`) |
 //! | `TM_DECISIONS` | JSON array of decisions (`drive`) |
 //! | `TM_REPORT`    | where to write a JSON run report (all modes but `live`) |
+//! | `TM_MAX_TRACE_BYTES` | largest trace file `replay` will load (default [`DEFAULT_MAX_TRACE_BYTES`]) |
 //!
 //! Without any of them set, a program behaves exactly as it would without
 //! timemachine (live mode with the sources it configured).
@@ -25,7 +26,7 @@ use serde::{Deserialize, Serialize};
 use crate::ctx::{Builder, Ctx, Mode, Persist};
 use crate::divergence::Divergence;
 use crate::harness;
-use crate::trace::{OutcomeKind, Trace, TraceError};
+use crate::trace::{DEFAULT_MAX_TRACE_BYTES, OutcomeKind, Trace, TraceError};
 
 /// Name of the mode variable.
 pub const TM_MODE: &str = "TM_MODE";
@@ -41,6 +42,32 @@ pub const TM_TRACE: &str = "TM_TRACE";
 pub const TM_DECISIONS: &str = "TM_DECISIONS";
 /// Name of the report-path variable.
 pub const TM_REPORT: &str = "TM_REPORT";
+
+/// Name of the trace-size-limit variable. Unlike the other variables it is
+/// not set by `tm`; it is inherited from the user's environment, and `tm`
+/// itself honours it too.
+pub const TM_MAX_TRACE_BYTES: &str = "TM_MAX_TRACE_BYTES";
+
+/// The trace size limit: `TM_MAX_TRACE_BYTES` if set, otherwise
+/// [`DEFAULT_MAX_TRACE_BYTES`].
+pub fn max_trace_bytes() -> Result<u64, EnvError> {
+    match var(TM_MAX_TRACE_BYTES) {
+        None => Ok(DEFAULT_MAX_TRACE_BYTES),
+        Some(v) => match v.parse::<u64>() {
+            Ok(n) if n > 0 => Ok(n),
+            Ok(_) => Err(EnvError::Invalid {
+                var: TM_MAX_TRACE_BYTES,
+                value: v,
+                reason: "must be greater than 0".into(),
+            }),
+            Err(e) => Err(EnvError::Invalid {
+                var: TM_MAX_TRACE_BYTES,
+                value: v,
+                reason: e.to_string(),
+            }),
+        },
+    }
+}
 
 /// Exit code of [`run_main`] when replay diverged.
 pub const EXIT_DIVERGED: u8 = 3;
@@ -142,8 +169,9 @@ impl Builder {
             }
             "replay" => {
                 let path = path_var(TM_TRACE, &mode)?;
-                let trace =
-                    Trace::load(&path).map_err(|source| EnvError::Trace { path, source })?;
+                let limit = max_trace_bytes()?;
+                let trace = Trace::load_with_limit(&path, limit)
+                    .map_err(|source| EnvError::Trace { path, source })?;
                 self.persist = Persist {
                     trace_out: None,
                     report_out,
@@ -261,7 +289,7 @@ where
             return ExitCode::from(EXIT_CONFIG);
         }
     };
-    let recorded = recorded_outcome();
+    let recorded = ctx.recorded_outcome();
     let mode = ctx.mode();
     // run_main owns the process, so it may own the panic hook: divergence
     // panics are reported once, below, instead of also by the default hook.
@@ -316,12 +344,4 @@ fn is_divergence_panic(payload: &(dyn std::any::Any + Send)) -> bool {
         .or_else(|| payload.downcast_ref::<&str>().copied())
         .unwrap_or_default();
     text.starts_with(crate::divergence::DIVERGENCE_PREFIX)
-}
-
-fn recorded_outcome() -> Option<(OutcomeKind, Option<String>)> {
-    if var(TM_MODE).as_deref() != Some("replay") {
-        return None;
-    }
-    let t = Trace::load(var(TM_TRACE)?).ok()?;
-    Some((t.outcome, t.message))
 }

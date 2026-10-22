@@ -56,11 +56,12 @@ cargo build --examples --bins
 |---|---|---|
 | unit (`src/`) | 18 | RNG golden values (cross-checked against an independent implementation and the SplitMix64 reference), path confinement, in-memory/real fs, ddmin, failure signatures, trace round trip, site parsing |
 | bin unit (`src/bin/tm`) | 4 | scratch dir is 0700 on Unix and removed on drop; trace naming by seed vs run |
-| `tests/record_replay.rs` | 8 | property: replay reproduces the observable transcript for 64 random seeds; same seed ⇒ same trace; replay never consults any source; recorded errors replay as errors; real-clock recording replays without sleeping |
-| `tests/divergence.rs` | 11 | each divergence reason, expected/actual/context in the message, caught divergence keeps failing, site-check policies, wrong-type and out-of-range values |
-| `tests/trace_format.rs` | 10 | empty, garbage, wrong format, wrong version, truncation, reordering, removal, checksum, trailing data, duplicate header, count mismatch, atomic save; property: 256 random single-byte corruptions never panic and never misread events |
+| `tests/record_replay.rs` | 9 | property: replay reproduces the observable transcript for 64 random seeds; same seed ⇒ same trace; driving the recorded decisions re-creates the original event stream; replay never consults any source; recorded errors replay as errors; real-clock recording replays without sleeping |
+| `tests/divergence.rs` | 13 | each divergence reason, expected/actual/context in the message, caught divergence keeps failing, site-check policies, wrong-type and out-of-range values, checkpoints restore the recorded state in order, reordered checkpoints diverge at the first out-of-order mark |
+| `tests/trace_format.rs` | 16 | empty, garbage, wrong format, wrong version, truncation, reordering, removal, checksum, trailing data, duplicate header, count mismatch, atomic save, invalid UTF-8, CRLF, header/footer edits fail replay, no partial file on failed save; properties (256 cases each): random single-byte corruption (file and in-memory readers agree), truncation at any byte, swapping any two events |
+| `tests/large_trace.rs` | 4 | over-limit file refused before reading, inclusive configurable limit, endless input (`/dev/zero`) stops at the limit, 50,000-event round trip and owned replay |
 | `tests/explore_minimize.rs` | 10 (+1 ignored) | deterministic hunting, failure rate matches the bug (12–21 % band for a 16.7 % bug, 1200 seeds), 50 identical replays, committed fixture replays, race minimized to `[1]`, budget respected, nondeterminism refused with a reason |
-| `tests/cli.rs` | 11 | real `tm` binary against the examples: hunt → replay ×10, deterministic hunting, divergence exit 3, fix check over 150 seeds, minimize, validate/inspect/diff, missing-trace explanation, invalid `TM_*` config (4 cases, exit 2), `TM_TEST` filter, stray inherited `TM_TEST` (regression), timeouts |
+| `tests/cli.rs` | 12 | real `tm` binary against the examples: hunt → replay ×10, deterministic hunting, divergence exit 3, fix check over 150 seeds, minimize, validate/inspect/diff, missing-trace explanation, invalid `TM_*` config (6 cases, exit 2), `TM_MAX_TRACE_BYTES` honoured by `tm` and the program, `TM_TEST` filter, stray inherited `TM_TEST` (regression), timeouts |
 | `tests/readme_example.rs` | 1 | the README's library example compiles and passes |
 | `tests/panic_location.rs` | 1 | divergence panics report the user's call site |
 | doctests | 2 | crate-level example and `run_main` example (compile-only) |
@@ -101,7 +102,7 @@ Workflow `.github/workflows/ci.yml` (lint, test on ubuntu/macos/windows, MSRV 1.
 
 ## Known limitations and unresolved risks
 
-See `LIMITATIONS.md` and `UNSUPPORTED.md`. Unresolved: Windows behavior unobserved (path handling and exit codes are written to be portable but untested); trace size is uncapped; the API has had no outside users.
+See `LIMITATIONS.md` and `UNSUPPORTED.md`. Unresolved: Windows behavior unobserved (path handling and exit codes are written to be portable but untested); recording holds the trace in memory with no event cap (load is capped at 1 GiB by default); the API has had no outside users.
 
 ## Needed for further verification
 
@@ -125,3 +126,18 @@ See `LIMITATIONS.md` and `UNSUPPORTED.md`. Unresolved: Windows behavior unobserv
 | 11 | Clean-clone quick start | README commands work verbatim | clean clone above | PASS | all exits 0 | README |
 | 12 | Lint / docs / deps / MSRV | all gates green | table above | PASS | all exit 0 | `.github/workflows/ci.yml` |
 | 13 | CI on all OSes | green on Linux, macOS, Windows | GitHub Actions | NOT RUN | not yet pushed | `.github/workflows/ci.yml` |
+
+## Deep audit addendum (2026-10-22, after `5223f59`)
+
+Scope: the determinism definition, checkpoint ordering, malformed recordings, divergence, memory on large recordings, trace size cap, original-vs-replay comparison. Result: 90 passed, 0 failed, 1 ignored (was 76/0/1).
+
+| finding | severity | fix | regression evidence |
+|---|---|---|---|
+| `Trace::load` read the whole file with no limit: `tm validate /dev/zero` grew to 1.5 GB in 3 s and never finished | reliability (memory exhaustion from a path argument) | bounded streaming reader, `TraceError::TooLarge`, 1 GiB default, `TM_MAX_TRACE_BYTES` | `tests/large_trace.rs`; old build: 1 GiB + 1 sparse file → read fully (1.07 GB RSS) and reported "malformed"; new build: refused in 0.00 s, 3.7 MB RSS |
+| `save` and `load` each held a full copy of the trace text next to the events; `harness::replay` cloned the trace; `run_main` loaded the replayed trace twice | measured memory | streaming save/load, `replay_owned`, outcome read from the replayed trace | 10M events: validate 1,962 → 1,460 MB, replay 2,267 → 1,497 MB (table in `DETERMINISM.md`) |
+| `run_main` compared the replay against a second load of `TM_TRACE`, which could differ from the trace replayed if the file was replaced in between | correctness (narrow race) | compare against the trace held by the replaying `Ctx` | structural; covered by the existing CLI replay tests |
+| invalid UTF-8 reported as a generic I/O error without a line | error quality | `Malformed { line }` | `invalid_utf8_in_a_file_is_a_malformed_line_not_an_io_error` fails on the old code |
+| README claimed "edits" are rejected; the checksum covers event lines only | docs | documented precisely; replay still reports an edited outcome as not reproduced | `header_and_footer_edits_are_not_covered_by_the_checksum_but_fail_replay` |
+| save left no fsync before rename | durability | `sync_all` before rename; partial file removed on failure | `save_streams_and_leaves_no_partial_file_on_failure` |
+
+Commands (macOS aarch64, rustc 1.98.0 unless noted), all exit 0: `cargo fmt --all --check`; `cargo clippy --all-targets --all-features --locked -- -D warnings` (1.98.0 and 1.99.1); `cargo test --all-features --locked`; `cargo +1.85 test --all-features --locked`; `RUSTDOCFLAGS="-D warnings" cargo doc --no-deps --all-features --locked`; `cargo build --lib --no-default-features --locked`; `cargo deny check`; `cargo audit` (offline DB).

@@ -44,6 +44,21 @@ proptest! {
         prop_assert_eq!(a, b);
         prop_assert_eq!(ta.first_difference(&tb), None);
     }
+
+    /// Original vs re-execution: driving a fresh run with the recorded
+    /// decisions (and the same simulated sources) re-creates the original
+    /// event stream value for value, and the same observable output. This is
+    /// the property the minimizer relies on.
+    #[test]
+    fn driving_the_recorded_decisions_recreates_the_original_run(seed in any::<u64>()) {
+        let (recorded, trace) = record_probe(seed);
+        let ctx = common::rich_setup(Builder::new("probe").seed(seed)).drive(trace.decisions());
+        let out = common::probe(&ctx).unwrap();
+        let driven = ctx.finish(OutcomeKind::Passed, None).unwrap().unwrap();
+        prop_assert_eq!(out, recorded);
+        prop_assert_eq!(trace.first_difference(&driven), None);
+        prop_assert_eq!(driven.events.len(), trace.events.len());
+    }
 }
 
 #[test]
