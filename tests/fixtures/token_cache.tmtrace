@@ -1,8 +1,8 @@
 {"header":{"format":"timemachine-trace","version":1,"test":"token","seed":2,"sources":"sim+custom","created_by":"deterministic-timemachine 0.1.0"}}
-{"event":{"seq":0,"kind":"clock.now","value":{"u64":1735689600000000000},"site":"tests/common/mod.rs:63:23"}}
-{"event":{"seq":1,"kind":"net.request","key":"POST https://auth.test/token len=0 fnv=cbf29ce484222325","value":{"response":{"status":200,"body":{"utf8":"tok-1"}}},"site":"tests/common/mod.rs:69:21"}}
-{"event":{"seq":2,"kind":"rng.u64","value":{"u64":1884871951439679575},"site":"tests/common/mod.rs:76:46"}}
-{"event":{"seq":3,"kind":"clock.sleep","key":"101000000","value":"unit","site":"tests/common/mod.rs:76:9"}}
-{"event":{"seq":4,"kind":"clock.now","value":{"u64":1735689600101000000},"site":"tests/common/mod.rs:63:23"}}
-{"event":{"seq":5,"kind":"net.request","key":"POST https://auth.test/token len=0 fnv=cbf29ce484222325","value":{"response":{"status":200,"body":{"utf8":"tok-2"}}},"site":"tests/common/mod.rs:69:21"}}
-{"end":{"events":6,"outcome":"failed","message":"token refetched: 2 fetches","checksum":"1d5bd96410aa744e"}}
+{"event":{"seq":0,"kind":"clock.now","value":{"u64":1735689600000000000},"site":"tests/common/mod.rs:85:23"}}
+{"event":{"seq":1,"kind":"net.request","key":"POST https://auth.test/token len=0 fnv=cbf29ce484222325","value":{"response":{"status":200,"body":{"utf8":"tok-1"}}},"site":"tests/common/mod.rs:92:14"}}
+{"event":{"seq":2,"kind":"rng.u64","value":{"u64":1884871951439679575},"site":"tests/common/mod.rs:100:46"}}
+{"event":{"seq":3,"kind":"clock.sleep","key":"101000000","value":"unit","site":"tests/common/mod.rs:100:9"}}
+{"event":{"seq":4,"kind":"clock.now","value":{"u64":1735689600101000000},"site":"tests/common/mod.rs:85:23"}}
+{"event":{"seq":5,"kind":"net.request","key":"POST https://auth.test/token len=0 fnv=cbf29ce484222325","value":{"response":{"status":200,"body":{"utf8":"tok-2"}}},"site":"tests/common/mod.rs:92:14"}}
+{"end":{"events":6,"outcome":"failed","message":"token refetched: 2 fetches","checksum":"baef6124cd179542"}}
