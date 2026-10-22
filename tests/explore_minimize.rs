@@ -125,6 +125,9 @@ fn minimizer_shrinks_a_race_to_one_decision() {
     // The minimized trace is itself a reproducible failure.
     assert!(harness::replay(&m.trace, |b| b, lost_update).reproduced);
     assert!(m.trace.message.unwrap().starts_with("lost update:"));
+    // Regression: drive-mode traces used to claim "seed 0".
+    assert_eq!(m.trace.header.seed, None);
+    assert_eq!(m.trace.header.sources, "drive");
 }
 
 #[test]

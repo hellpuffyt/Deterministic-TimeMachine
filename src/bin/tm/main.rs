@@ -1,5 +1,7 @@
 //! `tm` — hunt for, replay, minimize and inspect timemachine traces.
 
+#![forbid(unsafe_code)]
+
 mod child;
 mod hunt;
 mod minimize;

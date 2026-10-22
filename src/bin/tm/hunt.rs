@@ -91,16 +91,7 @@ pub fn run(o: Options) -> Result<ExitCode> {
             std::fs::create_dir_all(&o.out)
                 .with_context(|| format!("cannot create {}", o.out.display()))?;
             // Real-sources recordings have no seed; name them by run number.
-            let (label, file) = match trace.header.seed {
-                Some(s) => (
-                    format!("seed {s}"),
-                    format!("{}-seed{s}.tmtrace", sanitize(&trace.header.test)),
-                ),
-                None => (
-                    format!("{} sources", trace.header.sources),
-                    format!("{}-run{}.tmtrace", sanitize(&trace.header.test), i + 1),
-                ),
-            };
+            let (label, file) = trace_name(&trace, i + 1);
             let dest = o.out.join(file);
             trace
                 .save(&dest)
@@ -151,6 +142,20 @@ pub fn run(o: Options) -> Result<ExitCode> {
     })
 }
 
+/// Label for messages and file name for a saved failing trace. Simulated
+/// recordings are named by seed; real-sources recordings have no seed and
+/// are named by run number.
+fn trace_name(trace: &Trace, run: u64) -> (String, String) {
+    let test = sanitize(&trace.header.test);
+    match trace.header.seed {
+        Some(s) => (format!("seed {s}"), format!("{test}-seed{s}.tmtrace")),
+        None => (
+            format!("{} sources", trace.header.sources),
+            format!("{test}-run{run}.tmtrace"),
+        ),
+    }
+}
+
 fn sanitize(name: &str) -> String {
     name.chars()
         .map(|c| {
@@ -161,4 +166,40 @@ fn sanitize(name: &str) -> String {
             }
         })
         .collect()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use timemachine::OutcomeKind;
+    use timemachine::trace::Header;
+
+    fn trace(seed: Option<u64>, sources: &str) -> Trace {
+        Trace {
+            header: Header::new("my test/1", seed, sources),
+            events: vec![],
+            outcome: OutcomeKind::Failed,
+            message: None,
+        }
+    }
+
+    #[test]
+    fn seeded_traces_are_named_by_seed() {
+        assert_eq!(
+            trace_name(&trace(Some(7), "sim"), 3),
+            ("seed 7".into(), "my_test_1-seed7.tmtrace".into())
+        );
+    }
+
+    #[test]
+    fn real_sources_traces_are_named_by_run_not_by_a_fake_seed() {
+        // Regression: real-sources failures used to be saved as "-seed0".
+        assert_eq!(
+            trace_name(&trace(None, "real+custom"), 2),
+            (
+                "real+custom sources".into(),
+                "my_test_1-run2.tmtrace".into()
+            )
+        );
+    }
 }

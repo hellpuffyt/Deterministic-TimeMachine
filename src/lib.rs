@@ -39,6 +39,7 @@
 //! assert!(replay.reproduced);
 //! ```
 
+#![forbid(unsafe_code)]
 #![cfg_attr(docsrs, feature(doc_cfg))]
 
 pub mod ctx;
