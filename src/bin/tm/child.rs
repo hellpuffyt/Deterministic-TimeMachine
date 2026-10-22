@@ -46,6 +46,7 @@ impl Child<'_> {
         command.args(args);
         for var in [
             timemachine::envmode::TM_MODE,
+            timemachine::envmode::TM_TEST,
             timemachine::envmode::TM_SEED,
             timemachine::envmode::TM_SOURCES,
             timemachine::envmode::TM_TRACE,
@@ -81,6 +82,18 @@ fn code(status: ExitStatus) -> Option<i32> {
     status.code()
 }
 
+/// Creates a directory readable only by the current user (on Unix), because
+/// traces can contain whatever the program under test read.
+fn create_private_dir(dir: &Path) -> std::io::Result<()> {
+    let mut builder = std::fs::DirBuilder::new();
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::DirBuilderExt;
+        builder.mode(0o700);
+    }
+    builder.create(dir)
+}
+
 /// A private scratch directory for one `tm` invocation, removed on drop.
 pub struct Scratch {
     dir: PathBuf,
@@ -91,7 +104,7 @@ impl Scratch {
         let base = std::env::temp_dir();
         for attempt in 0..100u32 {
             let dir = base.join(format!("tm-{}-{attempt}", std::process::id()));
-            if std::fs::create_dir(&dir).is_ok() {
+            if create_private_dir(&dir).is_ok() {
                 return Ok(Scratch { dir });
             }
         }
@@ -115,4 +128,30 @@ impl Drop for Scratch {
 
 pub fn display(p: &Path) -> String {
     p.display().to_string()
+}
+
+#[cfg(test)]
+#[allow(clippy::unwrap_used)]
+mod tests {
+    use super::*;
+
+    #[cfg(unix)]
+    #[test]
+    fn scratch_dir_is_private() {
+        use std::os::unix::fs::PermissionsExt;
+        let scratch = Scratch::new().unwrap();
+        let mode = std::fs::metadata(&scratch.dir)
+            .unwrap()
+            .permissions()
+            .mode();
+        assert_eq!(mode & 0o777, 0o700);
+    }
+
+    #[test]
+    fn scratch_dir_is_removed_on_drop() {
+        let scratch = Scratch::new().unwrap();
+        let dir = scratch.dir.clone();
+        drop(scratch);
+        assert!(!dir.exists());
+    }
 }

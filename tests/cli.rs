@@ -307,6 +307,20 @@ fn invalid_tm_configuration_is_rejected_by_the_program() {
 }
 
 #[test]
+fn a_stray_tm_test_variable_in_the_users_shell_is_not_inherited() {
+    // Regression: tm used to pass an inherited TM_TEST through to the child,
+    // which then ignored record mode and wrote no trace.
+    let dir = tempfile::tempdir().unwrap();
+    let ex = example("flaky_cache");
+    let o = run(
+        &["hunt", "--sources", "sim", "--", ex.to_str().unwrap()],
+        &[("TM_TEST", "unrelated_test"), ("TM_MODE", "live")],
+        dir.path(),
+    );
+    assert_eq!(o.status.code(), Some(0), "{}", text(&o));
+}
+
+#[test]
 fn test_filter_leaves_other_contexts_alone() {
     // TM_TEST names a different test: the program runs live and writes nothing.
     let dir = tempfile::tempdir().unwrap();
