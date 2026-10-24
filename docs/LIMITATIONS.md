@@ -10,7 +10,7 @@
 - **Fixing a bug usually changes the input sequence**, so replaying the *old* failing trace against the *fixed* code diverges rather than passes. Check fixes by re-running the same seeds with simulated sources (`tm hunt --sources sim --first-seed N --runs 1`, or `harness::explore`).
 - **Minimization needs deterministic observations.** With real sources, non-decision inputs (time, files, network) can differ between runs; `minimize` detects this up front and refuses.
 - **`tm` passes `TM_*` variables to the child only.** Programs that spawn further processes must forward them themselves.
-- **Windows** is configured in CI but has not been observed passing yet (see [PRODUCTION_READINESS.md](PRODUCTION_READINESS.md)).
+- **Windows** passes the CI test suite but has had no testing beyond it (see [PRODUCTION_READINESS.md](PRODUCTION_READINESS.md)).
 - **Not on crates.io.** Use the git dependency shown in the README.
 
 ## Roadmap

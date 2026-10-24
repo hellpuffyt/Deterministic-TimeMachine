@@ -45,7 +45,7 @@ If one of these changes which `Ctx` requests are made, replay reports a divergen
 
 - **One deterministic call order.** A `Ctx` is `Send + Sync`, but replay matches requests by position. Requests from several OS threads in a racy order diverge (reported, not silent). Use one thread or `sched`.
 - **The program, not just the trace, must be the same.** A code change that alters the request sequence diverges by design. Line moves within a file are tolerated by default (`SiteCheck::File`); `SiteCheck::Exact` and `Off` are available.
-- **Unsupported runtimes and modes.** No async/virtual-time timers for tokio-style executors; no `#[test]` macro; programs that spawn child processes must forward `TM_*` themselves; Windows is configured in CI but not yet observed passing.
+- **Unsupported runtimes and modes.** No async/virtual-time timers for tokio-style executors; no `#[test]` macro; programs that spawn child processes must forward `TM_*` themselves; Windows is verified only by the CI test suite.
 
 ## Trace integrity
 
