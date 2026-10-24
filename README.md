@@ -241,7 +241,7 @@ Report vulnerabilities privately: see [SECURITY.md](SECURITY.md).
 
 ## Limitations and roadmap
 
-See [docs/LIMITATIONS.md](docs/LIMITATIONS.md) and [docs/UNSUPPORTED.md](docs/UNSUPPORTED.md). Highlights: no syscall interception; only inputs read through `Ctx` are controlled; the scheduler controls your steps, not OS threads; Windows support is configured in CI but has not run yet.
+See [docs/LIMITATIONS.md](docs/LIMITATIONS.md) and [docs/UNSUPPORTED.md](docs/UNSUPPORTED.md). Highlights: no syscall interception; only inputs read through `Ctx` are controlled; the scheduler controls your steps, not OS threads; CI (Linux, macOS, Windows) passes, but Windows has had no testing beyond the CI suite.
 
 ## Contributing
 

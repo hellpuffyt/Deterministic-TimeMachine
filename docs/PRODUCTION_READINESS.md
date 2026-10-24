@@ -1,6 +1,6 @@
 # Production readiness record
 
-**Classification: Partially Verified** — everything in the acceptance checklist below passed on macOS (aarch64) from a clean clone, but **GitHub Actions has not run yet**, so Linux and Windows have never been observed passing. The project describes itself as experimental 0.1.0; this record is evidence, not an endorsement.
+**Classification: Partially Verified** — everything in the acceptance checklist below passed on macOS (aarch64) from a clean clone, and the GitHub Actions workflow has since passed on Linux, macOS and Windows (GitHub Actions run 40115734341 on `7b1d772`, 2026-10-24); Linux and Windows are verified only by that CI run. The project describes itself as experimental 0.1.0; this record is evidence, not an endorsement.
 
 | | |
 |---|---|
@@ -16,7 +16,7 @@ A Rust library (`timemachine`) and CLI (`tm`) that make flaky tests reproducible
 ## Supported platforms and prerequisites
 
 - Rust ≥ 1.85 (verified with 1.85.1 and 1.98.0).
-- macOS aarch64: verified. Linux x86_64 and Windows x86_64: configured in CI, **not yet run**.
+- macOS aarch64: verified. Linux x86_64 and Windows x86_64: CI test suite green (GitHub Actions run 40115734341 on `7b1d772`, 2026-10-24).
 - No external services, credentials, hardware or privileges are needed for any test.
 
 ## Clean-clone setup (as executed)
@@ -98,15 +98,15 @@ No benchmarks are published and no performance claims are made. Wall-clock timin
 
 ## CI status
 
-Workflow `.github/workflows/ci.yml` (lint, test on ubuntu/macos/windows, MSRV 1.85, cargo-deny; read-only permissions; pinned action SHAs). **Not yet run** — the repository has not been pushed.
+Workflow `.github/workflows/ci.yml` (lint, test on ubuntu/macos/windows, MSRV 1.85, cargo-deny; read-only permissions; pinned action SHAs). Green on every job — lint, test (ubuntu, macos, windows), msrv, deny — in GitHub Actions run 40115734341 on `7b1d772`, 2026-10-24.
 
 ## Known limitations and unresolved risks
 
-See `LIMITATIONS.md` and `UNSUPPORTED.md`. Unresolved: Windows behavior unobserved (path handling and exit codes are written to be portable but untested); recording holds the trace in memory with no event cap (load is capped at 1 GiB by default); the API has had no outside users.
+See `LIMITATIONS.md` and `UNSUPPORTED.md`. Unresolved: Windows is exercised only by the CI suite; recording holds the trace in memory with no event cap (load is capped at 1 GiB by default); the API has had no outside users.
 
 ## Needed for further verification
 
-- A GitHub Actions run (Linux, macOS, Windows) after the repository is published.
+- Manual use on Linux and Windows beyond the CI suite.
 - No hardware, credentials or external services are required.
 
 ## Acceptance checklist
@@ -125,7 +125,7 @@ See `LIMITATIONS.md` and `UNSUPPORTED.md`. Unresolved: Windows behavior unobserv
 | 10 | Unsupported sources documented | list of uncontrolled nondeterminism | `docs/UNSUPPORTED.md` | PASS | 11 sources listed | — |
 | 11 | Clean-clone quick start | README commands work verbatim | clean clone above | PASS | all exits 0 | README |
 | 12 | Lint / docs / deps / MSRV | all gates green | table above | PASS | all exit 0 | `.github/workflows/ci.yml` |
-| 13 | CI on all OSes | green on Linux, macOS, Windows | GitHub Actions | NOT RUN | not yet pushed | `.github/workflows/ci.yml` |
+| 13 | CI on all OSes | green on Linux, macOS, Windows | GitHub Actions | PASS | GitHub Actions run 40115734341 on `7b1d772`, 2026-10-24 | `.github/workflows/ci.yml` |
 
 ## Deep audit addendum (2026-10-22, after `5223f59`)
 
