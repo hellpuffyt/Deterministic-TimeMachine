@@ -36,7 +36,8 @@ fn divergence_panics_at_the_callers_line() {
     );
     let _ = std::panic::take_hook();
     assert!(report.divergence.is_some());
-    let loc = LOCATION.lock().unwrap().clone().unwrap();
+    // Windows reports `tests\panic_location.rs`; compare with `/` separators.
+    let loc = LOCATION.lock().unwrap().clone().unwrap().replace('\\', "/");
     // Before the fix this pointed into src/ctx/engine.rs.
     assert!(
         loc.starts_with("tests/panic_location.rs:"),
