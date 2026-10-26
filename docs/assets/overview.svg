@@ -1,0 +1,72 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="500" viewBox="0 0 1200 500" role="img" aria-labelledby="t d">
+<title id="t">Deterministic-TimeMachine data flow</title>
+<desc id="d">Code under test reads time, randomness, files, environment and network through Ctx input methods. Every call goes through ctx::engine interact, which in live, record or drive mode asks the sources, in record mode appends an event that trace::codec writes to a .tmtrace file, and in replay mode answers from the trace and raises a Divergence on mismatch. The tm CLI drives child programs through TM_* environment variables, and the minimizer shrinks decision lists by re-running in drive mode.</desc>
+<defs><marker id="h" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 z" fill="#A3AAA6"/></marker><marker id="ha" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 z" fill="#3FBF8A"/></marker></defs>
+<rect width="1200" height="500" fill="#0C0D0D"/>
+<text x="30" y="38" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace" font-size="15" fill="#EEEAE2" text-anchor="start" font-weight="600">timemachine</text>
+<text x="144" y="38" font-family="-apple-system,Segoe UI,Helvetica,Arial,sans-serif" font-size="13" fill="#A3AAA6" text-anchor="start" font-weight="400">explicit input injection · one trace format · record, replay, minimize</text>
+<rect x="30" y="80" width="210" height="130" rx="8" fill="#17191A" stroke="#2A2E2D" stroke-width="1"/>
+<text x="44" y="104" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace" font-size="14" fill="#EEEAE2" text-anchor="start" font-weight="600">code under test</text>
+<text x="44" y="126" font-family="-apple-system,Segoe UI,Helvetica,Arial,sans-serif" font-size="11.5" fill="#A3AAA6" text-anchor="start" font-weight="400">your test or program</text>
+<text x="44" y="143" font-family="-apple-system,Segoe UI,Helvetica,Arial,sans-serif" font-size="11.5" fill="#A3AAA6" text-anchor="start" font-weight="400">reads inputs only</text>
+<text x="44" y="160" font-family="-apple-system,Segoe UI,Helvetica,Arial,sans-serif" font-size="11.5" fill="#A3AAA6" text-anchor="start" font-weight="400">through a Ctx</text>
+<rect x="280" y="80" width="210" height="130" rx="8" fill="#17191A" stroke="#2A2E2D" stroke-width="1"/>
+<text x="294" y="104" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace" font-size="14" fill="#EEEAE2" text-anchor="start" font-weight="600">ctx::inputs</text>
+<text x="294" y="126" font-family="-apple-system,Segoe UI,Helvetica,Arial,sans-serif" font-size="11.5" fill="#A3AAA6" text-anchor="start" font-weight="400">#[track_caller] methods:</text>
+<text x="294" y="143" font-family="-apple-system,Segoe UI,Helvetica,Arial,sans-serif" font-size="11.5" fill="#A3AAA6" text-anchor="start" font-weight="400">now · sleep · gen_range</text>
+<text x="294" y="160" font-family="-apple-system,Segoe UI,Helvetica,Arial,sans-serif" font-size="11.5" fill="#A3AAA6" text-anchor="start" font-weight="400">choose · env_var · read</text>
+<text x="294" y="177" font-family="-apple-system,Segoe UI,Helvetica,Arial,sans-serif" font-size="11.5" fill="#A3AAA6" text-anchor="start" font-weight="400">write · request · mark</text>
+<path d="M240 145 L278 145" fill="none" stroke="#A3AAA6" stroke-width="1.4" marker-end="url(#h)"/>
+<rect x="530" y="80" width="220" height="370" rx="8" fill="#17191A" stroke="#3FBF8A" stroke-width="1.5"/>
+<text x="544" y="104" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace" font-size="14" fill="#3FBF8A" text-anchor="start" font-weight="600">ctx::engine</text>
+<text x="544" y="126" font-family="-apple-system,Segoe UI,Helvetica,Arial,sans-serif" font-size="11.5" fill="#A3AAA6" text-anchor="start" font-weight="400">interact(kind, key, site)</text>
+<text x="544" y="143" font-family="-apple-system,Segoe UI,Helvetica,Arial,sans-serif" font-size="11.5" fill="#A3AAA6" text-anchor="start" font-weight="400">single choke point</text>
+<text x="544" y="160" font-family="-apple-system,Segoe UI,Helvetica,Arial,sans-serif" font-size="11.5" fill="#A3AAA6" text-anchor="start" font-weight="400"></text>
+<text x="544" y="177" font-family="-apple-system,Segoe UI,Helvetica,Arial,sans-serif" font-size="11.5" fill="#A3AAA6" text-anchor="start" font-weight="400">modes:</text>
+<text x="544" y="194" font-family="-apple-system,Segoe UI,Helvetica,Arial,sans-serif" font-size="11.5" fill="#A3AAA6" text-anchor="start" font-weight="400">Live: ask the sources</text>
+<text x="544" y="211" font-family="-apple-system,Segoe UI,Helvetica,Arial,sans-serif" font-size="11.5" fill="#A3AAA6" text-anchor="start" font-weight="400">Record: ask + append an event</text>
+<text x="544" y="228" font-family="-apple-system,Segoe UI,Helvetica,Arial,sans-serif" font-size="11.5" fill="#A3AAA6" text-anchor="start" font-weight="400">Replay: answer from the trace</text>
+<text x="544" y="245" font-family="-apple-system,Segoe UI,Helvetica,Arial,sans-serif" font-size="11.5" fill="#A3AAA6" text-anchor="start" font-weight="400">Drive: decisions from a list</text>
+<text x="544" y="262" font-family="-apple-system,Segoe UI,Helvetica,Arial,sans-serif" font-size="11.5" fill="#A3AAA6" text-anchor="start" font-weight="400"></text>
+<text x="544" y="279" font-family="-apple-system,Segoe UI,Helvetica,Arial,sans-serif" font-size="11.5" fill="#A3AAA6" text-anchor="start" font-weight="400">replay compares kind + key</text>
+<text x="544" y="296" font-family="-apple-system,Segoe UI,Helvetica,Arial,sans-serif" font-size="11.5" fill="#A3AAA6" text-anchor="start" font-weight="400">(+ call-site file) before</text>
+<text x="544" y="313" font-family="-apple-system,Segoe UI,Helvetica,Arial,sans-serif" font-size="11.5" fill="#A3AAA6" text-anchor="start" font-weight="400">returning the recorded value;</text>
+<text x="544" y="330" font-family="-apple-system,Segoe UI,Helvetica,Arial,sans-serif" font-size="11.5" fill="#A3AAA6" text-anchor="start" font-weight="400">it never touches the sources</text>
+<path d="M490 145 L528 145" fill="none" stroke="#A3AAA6" stroke-width="1.4" marker-end="url(#h)"/>
+<rect x="840" y="70" width="330" height="130" rx="8" fill="#17191A" stroke="#2A2E2D" stroke-width="1"/>
+<text x="854" y="94" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace" font-size="14" fill="#EEEAE2" text-anchor="start" font-weight="600">sources</text>
+<text x="854" y="116" font-family="-apple-system,Segoe UI,Helvetica,Arial,sans-serif" font-size="11.5" fill="#A3AAA6" text-anchor="start" font-weight="400">Clock: virtual or system</text>
+<text x="854" y="133" font-family="-apple-system,Segoe UI,Helvetica,Arial,sans-serif" font-size="11.5" fill="#A3AAA6" text-anchor="start" font-weight="400">Rng: seeded xoshiro256** or entropy</text>
+<text x="854" y="150" font-family="-apple-system,Segoe UI,Helvetica,Arial,sans-serif" font-size="11.5" fill="#A3AAA6" text-anchor="start" font-weight="400">Fs: in-memory or confined RealFs</text>
+<text x="854" y="167" font-family="-apple-system,Segoe UI,Helvetica,Arial,sans-serif" font-size="11.5" fill="#A3AAA6" text-anchor="start" font-weight="400">Env: map or process</text>
+<text x="854" y="184" font-family="-apple-system,Segoe UI,Helvetica,Arial,sans-serif" font-size="11.5" fill="#A3AAA6" text-anchor="start" font-weight="400">Net: closure or refuse-all</text>
+<path d="M750 135 L838 135" fill="none" stroke="#A3AAA6" stroke-width="1.4" marker-end="url(#h)"/>
+<text x="795" y="127" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace" font-size="10.5" fill="#A3AAA6" text-anchor="middle" font-weight="400">live · record</text>
+<rect x="840" y="220" width="330" height="100" rx="8" fill="#17191A" stroke="#2A2E2D" stroke-width="1"/>
+<text x="854" y="244" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace" font-size="14" fill="#EEEAE2" text-anchor="start" font-weight="600">trace::codec  →  *.tmtrace</text>
+<text x="854" y="266" font-family="-apple-system,Segoe UI,Helvetica,Arial,sans-serif" font-size="11.5" fill="#A3AAA6" text-anchor="start" font-weight="400">JSON lines: header · events · footer</text>
+<text x="854" y="283" font-family="-apple-system,Segoe UI,Helvetica,Arial,sans-serif" font-size="11.5" fill="#A3AAA6" text-anchor="start" font-weight="400">footer: event count + FNV-1a checksum</text>
+<text x="854" y="300" font-family="-apple-system,Segoe UI,Helvetica,Arial,sans-serif" font-size="11.5" fill="#A3AAA6" text-anchor="start" font-weight="400">written to .partial, fsync, rename</text>
+<path d="M750 250 L838 250" fill="none" stroke="#A3AAA6" stroke-width="1.4" marker-end="url(#h)"/>
+<text x="795" y="242" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace" font-size="10.5" fill="#A3AAA6" text-anchor="middle" font-weight="400">record</text>
+<path d="M838 295 L752 295" fill="none" stroke="#A3AAA6" stroke-width="1.4" marker-end="url(#h)"/>
+<text x="795" y="287" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace" font-size="10.5" fill="#A3AAA6" text-anchor="middle" font-weight="400">replay</text>
+<rect x="840" y="350" width="330" height="100" rx="8" fill="#17191A" stroke="#2A2E2D" stroke-width="1"/>
+<text x="854" y="374" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace" font-size="14" fill="#EEEAE2" text-anchor="start" font-weight="600">Divergence</text>
+<text x="854" y="396" font-family="-apple-system,Segoe UI,Helvetica,Arial,sans-serif" font-size="11.5" fill="#A3AAA6" text-anchor="start" font-weight="400">event #, expected vs actual request,</text>
+<text x="854" y="413" font-family="-apple-system,Segoe UI,Helvetica,Arial,sans-serif" font-size="11.5" fill="#A3AAA6" text-anchor="start" font-weight="400">call sites, 3 preceding events, reason</text>
+<text x="854" y="430" font-family="-apple-system,Segoe UI,Helvetica,Arial,sans-serif" font-size="11.5" fill="#A3AAA6" text-anchor="start" font-weight="400">(different_request, past_end, ...) + hint</text>
+<path d="M750 390 L838 390" fill="none" stroke="#A3AAA6" stroke-width="1.4" marker-end="url(#h)"/>
+<text x="795" y="382" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace" font-size="10.5" fill="#A3AAA6" text-anchor="middle" font-weight="400">mismatch</text>
+<rect x="30" y="250" width="460" height="90" rx="8" fill="#17191A" stroke="#2A2E2D" stroke-width="1"/>
+<text x="44" y="274" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace" font-size="14" fill="#EEEAE2" text-anchor="start" font-weight="600">tm CLI → envmode</text>
+<text x="44" y="296" font-family="-apple-system,Segoe UI,Helvetica,Arial,sans-serif" font-size="11.5" fill="#A3AAA6" text-anchor="start" font-weight="400">hunt · replay · minimize · inspect · diff · validate</text>
+<text x="44" y="313" font-family="-apple-system,Segoe UI,Helvetica,Arial,sans-serif" font-size="11.5" fill="#A3AAA6" text-anchor="start" font-weight="400">runs the program as a child with TM_MODE, TM_SEED,</text>
+<text x="44" y="330" font-family="-apple-system,Segoe UI,Helvetica,Arial,sans-serif" font-size="11.5" fill="#A3AAA6" text-anchor="start" font-weight="400">TM_TRACE, TM_REPORT; run_main / Builder::from_env</text>
+<path d="M490 295 L528 295" fill="none" stroke="#A3AAA6" stroke-width="1.4" marker-end="url(#h)"/>
+<rect x="30" y="370" width="460" height="80" rx="8" fill="#17191A" stroke="#2A2E2D" stroke-width="1"/>
+<text x="44" y="394" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace" font-size="14" fill="#EEEAE2" text-anchor="start" font-weight="600">minimize::shrink_decisions</text>
+<text x="44" y="416" font-family="-apple-system,Segoe UI,Helvetica,Arial,sans-serif" font-size="11.5" fill="#A3AAA6" text-anchor="start" font-weight="400">ddmin over the recorded decisions, then a value-</text>
+<text x="44" y="433" font-family="-apple-system,Segoe UI,Helvetica,Arial,sans-serif" font-size="11.5" fill="#A3AAA6" text-anchor="start" font-weight="400">shrinking pass; each candidate re-runs in Drive mode</text>
+<path d="M490 410 L528 410" fill="none" stroke="#A3AAA6" stroke-width="1.4" marker-end="url(#h)"/>
+</svg>

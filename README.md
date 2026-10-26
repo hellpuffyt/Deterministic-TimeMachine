@@ -2,9 +2,15 @@
 
 ![CI](https://github.com/hellpuffyt/Deterministic-TimeMachine/actions/workflows/ci.yml/badge.svg)
 
-**Make flaky tests reproducible.** Route time, randomness, files, environment variables, network responses and scheduling choices through one small handle; record a run to a trace; replay it exactly — with a precise diagnostic the moment the code takes a different path — and shrink failing traces with delta debugging.
+**Make flaky tests reproducible.** Route time, randomness, files, environment variables, network responses and scheduling choices through one small handle (`Ctx`). Record a run to a trace, replay it exactly, get a precise diagnostic the moment the code takes a different path, and shrink failing traces with delta debugging.
 
-> **Status: experimental, v0.1.0 — not production-ready.** The library and the `tm` CLI work and are tested (see [docs/PRODUCTION_READINESS.md](docs/PRODUCTION_READINESS.md)), but the API may change before 1.0.
+[Case study ↗](https://hellpuff.dev/work/deterministic-timemachine)
+
+<img src="docs/assets/overview.svg" width="100%" alt="Deterministic-TimeMachine data flow: code under test calls ctx::inputs, every call goes through ctx::engine interact in live, record, replay or drive mode; the engine asks the sources, writes events through trace::codec to a .tmtrace file, answers replays from that file and reports a Divergence on mismatch; the tm CLI and the minimizer drive it">
+
+<sub>Diagram of the real modules (`ctx::inputs`, `ctx::engine`, `sources`, `trace::codec`, `divergence`, `envmode`, `minimize`, `bin/tm`).</sub>
+
+> **Status: experimental, v0.1.0, not production-ready.** The library and the `tm` CLI work and are tested (see [docs/PRODUCTION_READINESS.md](docs/PRODUCTION_READINESS.md)), but the API may change before 1.0.
 
 A test that fails on some runs, because of real timing and real randomness:
 
@@ -30,13 +36,13 @@ $ ./target/debug/tm replay tm-out/flaky_cache-run1.tmtrace --times 20 -- ./targe
 replayed 20 time(s): 20 reproduced the recorded outcome (failed: token refetched after the retry: tok-1 -> tok-2, backoff 101 ms, actually waited 101.7 ms, TTL 100 ms), 0 diverged, 0 differed
 ```
 
-The replay reproduces even the measured `101.7 ms`, and all 20 replays together took 0.14 s: replay answers `sleep` and `now` from the trace instead of waiting.
+With real sources the failing run number and timings change on every hunt. The replay reproduces even the measured `101.7 ms`, and all 20 replays together took 0.14 s: replay answers `sleep` and `now` from the trace instead of waiting.
 
 ## Why
 
-A flaky test is a test whose inputs you don't control: the clock, a random seed, the order two tasks ran in, a file another test left behind, a slow response. Re-running it until it fails tells you nothing about *why*. Common workarounds each cover one source: a mock clock here, a fixed seed there, `--test-threads=1` everywhere. Record/replay debuggers such as `rr` capture *everything* at the system-call level, which is powerful but Linux-only, heavyweight and not something you put in a test suite.
+A flaky test is a test whose inputs you don't control: the clock, a random seed, the order two tasks ran in, a file another test left behind, a slow response. Re-running it until it fails tells you nothing about *why*. Common workarounds each cover one source: a mock clock here, a fixed seed there, `--test-threads=1` everywhere. Record/replay debuggers such as `rr` capture *everything* at the system-call level, which covers far more, but is Linux-only, heavyweight and not something you put in a test suite.
 
-Deterministic-TimeMachine sits in between: **explicit dependency injection** for the inputs that usually cause flakiness, one trace format for all of them, and tooling around it (hunt, replay, divergence diagnostics, minimization). It is for Rust developers who own the code under test and are willing to read time, randomness, files, environment and network through a `Ctx`. It does not intercept syscalls and cannot make arbitrary code deterministic — see [docs/UNSUPPORTED.md](docs/UNSUPPORTED.md).
+Deterministic-TimeMachine sits in between: **explicit dependency injection** for the inputs that usually cause flakiness, one trace format for all of them, and tooling around it (hunt, replay, divergence diagnostics, minimization). It is for Rust developers who own the code under test and are willing to read time, randomness, files, environment and network through a `Ctx`. It does not intercept syscalls and cannot make arbitrary code deterministic; see [docs/UNSUPPORTED.md](docs/UNSUPPORTED.md).
 
 ## Quick start
 
@@ -116,7 +122,7 @@ or, inside an ordinary `#[test]`, `Builder::new("my_test").from_env()?` (the tra
 - `real_sources()` recordings of `RealFs`: replay is hermetic, but recording follows symlinks inside the root (see Limitations).
 - Failure matching for minimization by message *signature* (text before the first `:`).
 
-**Planned** (no code yet — see [docs/LIMITATIONS.md](docs/LIMITATIONS.md#roadmap))
+**Planned** (no code yet; see [docs/LIMITATIONS.md](docs/LIMITATIONS.md#roadmap))
 - An async adapter (virtual-time timers for tokio-style executors).
 - A `#[timemachine::test]` attribute macro.
 - Publishing to crates.io.
@@ -137,7 +143,7 @@ flowchart LR
     CLI["tm hunt / replay / minimize"] -->|"TM_* env vars"| P
 ```
 
-Details, including the trace format and why the RNG is implemented in-crate, are in [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md). The exact replay guarantee — what is controlled, what is not, which tests check each claim, and measured memory use for 1M and 10M-event traces — is in [docs/DETERMINISM.md](docs/DETERMINISM.md).
+Details, including the trace format and why the RNG is implemented in-crate, are in [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md). [docs/DETERMINISM.md](docs/DETERMINISM.md) states the exact replay guarantee: what is controlled, what is not, which tests check each claim, and measured memory use for 1M- and 10M-event traces.
 
 ## More examples
 
@@ -222,8 +228,8 @@ There are no benchmarks; the timings above are wall-clock observations from sing
 
 ## Security model
 
-- `tm hunt|replay|minimize` execute the command you give them, with the same rights as you — like a shell.
-- A trace is **input to your program**: replaying it feeds the recorded values to the code under test. Treat trace files like test fixtures from a contributor — review them before replaying.
+- `tm hunt|replay|minimize` execute the command you give them, with your user's rights, as a shell would.
+- A trace is **input to your program**: replaying it feeds the recorded values to the code under test. Treat trace files like test fixtures from a contributor and review them before replaying.
 - Trace parsing does not execute anything, rejects malformed input with errors (a property test feeds it 256 randomly corrupted traces per run and checks it never panics or misreads one), and reads at most 1 GiB by default (configurable), so a huge or endless input cannot exhaust memory. Parsed traces are held in memory: about 150 bytes per event.
 - `RealFs` refuses absolute paths and `..` components, but follows symlinks that already exist inside its root.
 - The default network source refuses every request, so a test cannot reach a real host by accident.
@@ -233,11 +239,11 @@ Report vulnerabilities privately: see [SECURITY.md](SECURITY.md).
 
 ## Troubleshooting
 
-- **`left no usable trace`** from `tm hunt` — the program does not build its context with `Builder::from_env()`/`run_main`, or `--test` does not match its test name.
-- **`did not reproduce`** — the program reads something nondeterministic outside the `Ctx` (a `std::time::Instant`, `HashMap` iteration order, a thread race). See [docs/UNSUPPORTED.md](docs/UNSUPPORTED.md).
-- **Divergence right after an edit** — expected when the edit changes which inputs are read. Line moves within a file are tolerated by default (`SiteCheck::File`).
-- **`checksum mismatch`** — the trace was edited. `tm inspect --no-verify` still shows it; the library has `Trace::parse_with(text, false)`.
-- **`driving the original … decisions did not reproduce`** from `tm minimize` — minimization needs deterministic non-random inputs; record with `--sources sim`.
+- **`left no usable trace`** from `tm hunt`: the program does not build its context with `Builder::from_env()`/`run_main`, or `--test` does not match its test name.
+- **`did not reproduce`**: the program reads something nondeterministic outside the `Ctx` (a `std::time::Instant`, `HashMap` iteration order, a thread race). See [docs/UNSUPPORTED.md](docs/UNSUPPORTED.md).
+- **Divergence right after an edit**: expected when the edit changes which inputs are read. Line moves within a file are tolerated by default (`SiteCheck::File`).
+- **`checksum mismatch`**: the trace was edited. `tm inspect --no-verify` still shows it; the library has `Trace::parse_with(text, false)`.
+- **`driving the original … decisions did not reproduce`** from `tm minimize`: minimization needs deterministic non-random inputs; record with `--sources sim`.
 
 ## Limitations and roadmap
 
@@ -245,7 +251,7 @@ See [docs/LIMITATIONS.md](docs/LIMITATIONS.md) and [docs/UNSUPPORTED.md](docs/UN
 
 ## Contributing
 
-Contributions are welcome — start with [CONTRIBUTING.md](CONTRIBUTING.md) and [docs/good-first-issues.md](docs/good-first-issues.md).
+Contributions are welcome. Start with [CONTRIBUTING.md](CONTRIBUTING.md) and [docs/good-first-issues.md](docs/good-first-issues.md).
 
 ## License
 
