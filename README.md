@@ -6,9 +6,39 @@
 
 [Case study ↗](https://hellpuff.dev/work/deterministic-timemachine)
 
-<img src="docs/assets/overview.svg" width="100%" alt="Deterministic-TimeMachine data flow: code under test calls ctx::inputs, every call goes through ctx::engine interact in live, record, replay or drive mode; the engine asks the sources, writes events through trace::codec to a .tmtrace file, answers replays from that file and reports a Divergence on mismatch; the tm CLI and the minimizer drive it">
+## Demo
 
-<sub>Diagram of the real modules (`ctx::inputs`, `ctx::engine`, `sources`, `trace::codec`, `divergence`, `envmode`, `minimize`, `bin/tm`).</sub>
+<img src="docs/screenshots/tm-hunt-replay-minimize.png" width="100%" alt="Terminal capture: tm hunt with simulated sources finds the flaky_cache failure at seed 2 and reports 98 of 600 runs failing (16.3%); tm replay reproduces the recorded failure 20 out of 20 times; tm hunt finds a lost update in lost_update; tm minimize shrinks its decisions from 7 to 1">
+
+Terminal capture of a real session with the bundled examples, after `cargo build --examples --bins`:
+a seeded hunt over 600 runs, 20 replays of the saved trace, then a hunt and minimization of the
+`lost_update` ordering bug. Run times vary by machine; the seeds, counts and traces do not.
+
+<details>
+<summary>Same output as text</summary>
+
+```console
+$ ./target/debug/tm hunt --sources sim --runs 600 --all -- ./target/debug/examples/flaky_cache
+found a failure on run 3 (seed 2, exit code 1): failed: token refetched after the retry: tok-1 -> tok-2, backoff 101 ms, actually waited 101.0 ms, TTL 100 ms
+saved tm-out/flaky_cache-seed2.tmtrace (8 events)
+reproduce with: tm replay tm-out/flaky_cache-seed2.tmtrace -- ./target/debug/examples/flaky_cache
+600 runs in 6.1s: 98 failed (16.3%)
+
+$ ./target/debug/tm replay tm-out/flaky_cache-seed2.tmtrace --times 20 -- ./target/debug/examples/flaky_cache
+replayed 20 time(s): 20 reproduced the recorded outcome (failed: token refetched after the retry: tok-1 -> tok-2, backoff 101 ms, actually waited 101.0 ms, TTL 100 ms), 0 diverged, 0 differed
+
+$ ./target/debug/tm hunt -- ./target/debug/examples/lost_update
+found a failure on run 1 (seed 0, exit code 1): failed: lost update: counter is 2 after 4 increments (schedule: worker-0 worker-2 worker-0 worker-2 worker-3 worker-1 worker-1 worker-3)
+saved tm-out/lost_update-seed0.tmtrace (7 events)
+reproduce with: tm replay tm-out/lost_update-seed0.tmtrace -- ./target/debug/examples/lost_update
+
+$ ./target/debug/tm minimize tm-out/lost_update-seed0.tmtrace -- ./target/debug/examples/lost_update
+decisions: 7 -> 1   events: 7 -> 6   program runs: 10 (0.1s)
+minimized decisions: [1]
+saved tm-out/lost_update-seed0.min.tmtrace
+```
+
+</details>
 
 > **Status: experimental, v0.1.0, not production-ready.** The library and the `tm` CLI work and are tested (see [docs/PRODUCTION_READINESS.md](docs/PRODUCTION_READINESS.md)), but the API may change before 1.0.
 
@@ -128,6 +158,10 @@ or, inside an ordinary `#[test]`, `Builder::new("my_test").from_env()?` (the tra
 - Publishing to crates.io.
 
 ## How it works
+
+<img src="docs/assets/overview.svg" width="100%" alt="Deterministic-TimeMachine data flow: code under test calls ctx::inputs, every call goes through ctx::engine interact in live, record, replay or drive mode; the engine asks the sources, writes events through trace::codec to a .tmtrace file, answers replays from that file and reports a Divergence on mismatch; the tm CLI and the minimizer drive it">
+
+<sub>Diagram (not a screenshot) of the real modules (`ctx::inputs`, `ctx::engine`, `sources`, `trace::codec`, `divergence`, `envmode`, `minimize`, `bin/tm`).</sub>
 
 ```mermaid
 flowchart LR
